@@ -113,6 +113,67 @@ describe("compiler", () => {
     expect(restMethods.every((method) => method.Properties?.ApiKeyRequired === true)).toBe(true);
   });
 
+  test("creates ApiGateway account role resource when provider restApi cloudWatchRoleArn is set", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        provider: {
+          restApi: {
+            cloudWatchRoleArn:
+              "arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole",
+          },
+        },
+        functions: {
+          hello: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              rest: [{ method: "GET", path: "/hello" }],
+            },
+          },
+        },
+      }),
+    );
+
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<
+      string,
+      { Type?: string; Properties?: { CloudWatchRoleArn?: string } }
+    >;
+    const accountResources = Object.values(resources).filter(
+      (resource) => resource.Type === "AWS::ApiGateway::Account",
+    );
+    expect(accountResources.length).toBeGreaterThan(0);
+    expect(
+      accountResources.some(
+        (resource) =>
+          resource.Properties?.CloudWatchRoleArn ===
+          "arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole",
+      ),
+    ).toBe(true);
+    expect(
+      accountResources.some(
+        (resource) =>
+          resource.Properties?.CloudWatchRoleArn !== undefined,
+      ),
+    ).toBe(true);
+
+    const roleResources = Object.values(resources).filter(
+      (resource) => resource.Type === "AWS::IAM::Role",
+    );
+    expect(
+      roleResources.some((resource) =>
+        JSON.stringify(resource).includes("RestApiCloudWatchRole"),
+      ),
+    ).toBe(false);
+  });
+
   test("supports direct role ARN in function iam list", () => {
     const config = normalizeConfig(
       validateServiceConfig({

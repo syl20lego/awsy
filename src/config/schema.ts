@@ -78,6 +78,7 @@ export const serviceConfigSchema = z.object({
       restApi: z
         .object({
           apiKeyRequired: z.boolean().optional(),
+          cloudWatchRoleArn: z.string().min(1).optional(),
         })
         .optional(),
       deployment: z
@@ -152,6 +153,7 @@ export const normalizedServiceConfigSchema = z.object({
     restApi: z
       .object({
         apiKeyRequired: z.boolean().optional(),
+        cloudWatchRoleArn: z.string().min(1).optional(),
       })
       .optional(),
     deployment: z

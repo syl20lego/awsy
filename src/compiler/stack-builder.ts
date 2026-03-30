@@ -147,14 +147,22 @@ export class ServiceStack extends Stack {
     const hasRestRoutes = Object.values(config.functions).some(
       (fn) => (fn.events?.rest?.length ?? 0) > 0,
     );
+    const providedRestApiCloudWatchRoleArn =
+      config.provider.restApi?.cloudWatchRoleArn;
     const restApi = hasRestRoutes
       ? new apigw.RestApi(this, "RestApi", {
           restApiName: withStageName(`${config.service}-rest`, config.provider.stage),
           deployOptions: {
             stageName: config.provider.stage,
           },
+          cloudWatchRole: providedRestApiCloudWatchRoleArn ? false : undefined,
         })
       : undefined;
+    if (restApi && providedRestApiCloudWatchRoleArn) {
+      new apigw.CfnAccount(this, "RestApiCloudWatchAccount", {
+        cloudWatchRoleArn: providedRestApiCloudWatchRoleArn,
+      });
+    }
     const globalRestApiKeyRequired = config.provider.restApi?.apiKeyRequired;
     let hasAnyRestApiKeyRequired = false;
     const buildOutputs = prepareFunctionBuilds(config);

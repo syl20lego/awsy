@@ -128,6 +128,7 @@ REST API key behavior:
 - Global: set `provider.restApi.apiKeyRequired: true` to require API keys on all REST routes.
 - Fallback per function: if global is not set, use `functions.<name>.restApi.apiKeyRequired`.
 - If neither is set, REST routes do not require API keys.
+- Optional account-level API Gateway CloudWatch logs role: set `provider.restApi.cloudWatchRoleArn` to use an existing role instead of default role handling.
 
 Example:
 
@@ -137,6 +138,7 @@ provider:
   stage: dev
   restApi:
     apiKeyRequired: true
+    cloudWatchRoleArn: arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole
 
 functions:
   hello:

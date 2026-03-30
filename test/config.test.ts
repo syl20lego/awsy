@@ -130,6 +130,23 @@ describe("config validation", () => {
     expect(normalized.functions.hello.restApi?.apiKeyRequired).toBe(false);
   });
 
+  test("supports provider restApi cloudWatchRoleArn", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      provider: {
+        restApi: {
+          cloudWatchRoleArn:
+            "arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole",
+        },
+      },
+      functions: {},
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.provider.restApi?.cloudWatchRoleArn).toBe(
+      "arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole",
+    );
+  });
+
   test("supports cloudFormationServiceRoleArn in provider deployment", () => {
     const raw = validateServiceConfig({
       service: "demo",
