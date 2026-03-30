@@ -25,7 +25,7 @@ npm run build
 
 If you use `awsy` from another project (linked or path-installed), make sure this CLI package's dependencies are installed in its own directory (`npm install` in the `awsy` project), since CDK CLI execution uses the package-local `aws-cdk` binary.
 
-When using `aws-yaml-cdk-cli` as a `file:` dependency, install `aws-cdk` in the consuming project as well:
+When using `awsy` as a `file:` dependency, install `aws-cdk` in the consuming project as well:
 
 ```bash
 npm i -D aws-cdk
@@ -70,7 +70,7 @@ awsy deploy -c awsy.yml --region us-east-1
 From the target project:
 
 ```bash
-npm i -D /absolute/path/to/kappa
+npm i -D /absolute/path/to/awsy
 npx awsy --help
 npx awsy validate -c awsy.yml
 ```
