@@ -172,6 +172,8 @@ describe("compiler", () => {
         JSON.stringify(resource).includes("RestApiCloudWatchRole"),
       ),
     ).toBe(false);
+    expect(stackArtifact.template.Outputs).not.toHaveProperty("HttpApiUrl");
+    expect(stackArtifact.template.Outputs).toHaveProperty("RestApiUrl");
   });
 
   test("supports direct role ARN in function iam list", () => {

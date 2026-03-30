@@ -137,13 +137,14 @@ export class ServiceStack extends Stack {
       }
     }
 
-    const httpApi = new apigwv2.HttpApi(
-      this,
-      "HttpApi",
-      {
-        apiName: withStageName(config.service, config.provider.stage),
-      },
+    const hasHttpRoutes = Object.values(config.functions).some(
+      (fn) => (fn.events?.http?.length ?? 0) > 0,
     );
+    const httpApi = hasHttpRoutes
+      ? new apigwv2.HttpApi(this, "HttpApi", {
+          apiName: withStageName(config.service, config.provider.stage),
+        })
+      : undefined;
     const hasRestRoutes = Object.values(config.functions).some(
       (fn) => (fn.events?.rest?.length ?? 0) > 0,
     );
@@ -214,6 +215,9 @@ export class ServiceStack extends Stack {
       }
 
       for (const route of fn.events?.http ?? []) {
+        if (!httpApi) {
+          continue;
+        }
         httpApi.addRoutes({
           path: route.path,
           methods: [
@@ -257,7 +261,9 @@ export class ServiceStack extends Stack {
       });
     }
 
-    new cdk.CfnOutput(this, "HttpApiUrl", { value: httpApi.url ?? "n/a" });
+    if (httpApi) {
+      new cdk.CfnOutput(this, "HttpApiUrl", { value: httpApi.url ?? "n/a" });
+    }
     if (restApi) {
       new cdk.CfnOutput(this, "RestApiUrl", { value: restApi.url });
     }

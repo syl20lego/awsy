@@ -335,6 +335,38 @@ function buildEnv(config: NormalizedServiceConfig): NodeJS.ProcessEnv {
   return env;
 }
 
+function printStackOutputs(config: NormalizedServiceConfig, env: NodeJS.ProcessEnv): void {
+  const result = spawnSync(
+    "aws",
+    [
+      "cloudformation",
+      "describe-stacks",
+      "--stack-name",
+      config.stackName,
+      "--query",
+      "Stacks[0].Outputs",
+      "--output",
+      "json",
+    ],
+    { env, encoding: "utf8" },
+  );
+  if (result.status !== 0) {
+    return;
+  }
+  const outputs = JSON.parse(result.stdout || "[]") as Array<{
+    OutputKey?: string;
+    OutputValue?: string;
+  }>;
+  if (!outputs.length) {
+    return;
+  }
+  process.stdout.write("\nStack outputs:\n");
+  for (const output of outputs) {
+    if (!output.OutputKey) continue;
+    process.stdout.write(`- ${output.OutputKey}: ${output.OutputValue ?? ""}\n`);
+  }
+}
+
 export function cdkSynth(config: NormalizedServiceConfig): void {
   const outdir = synthToTemp(config);
   const template = path.join(outdir, `${config.stackName}.template.json`);
@@ -353,6 +385,7 @@ export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: bool
       );
     }
     runCloudFormationDeployWithRole(config, template, env);
+    printStackOutputs(config, env);
     return;
   }
   const deployArgs = [
@@ -364,6 +397,7 @@ export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: bool
   ];
   try {
     runCdk(config, deployArgs, env);
+    printStackOutputs(config, env);
   } catch (error) {
     if (error instanceof CdkBootstrapMissingError) {
       if (hasCustomDeploymentOverrides(config)) {
@@ -384,6 +418,7 @@ export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: bool
       );
       runCdk(config, ["bootstrap", ...(bootstrapTarget ? [bootstrapTarget] : [])], env);
       runCdk(config, deployArgs, env);
+      printStackOutputs(config, env);
       return;
     }
     if (error instanceof CdkBootstrapDeleteFailedError) {
