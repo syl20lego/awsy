@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { normalizeConfig } from "../src/config/normalize.js";
 import { resolveAwsConfig } from "../src/runtime/aws.js";
-import { cdkBootstrap } from "../src/runtime/cdk.js";
+import { assertTemplateOnlyStack, cdkBootstrap, deployMode } from "../src/runtime/cdk.js";
 import {
   normalizedServiceConfigSchema,
   validateServiceConfig,
@@ -125,5 +128,50 @@ describe("config validation", () => {
     expect(normalized.provider.restApi?.apiKeyRequired).toBe(true);
     expect(normalized.functions.hello.events?.rest?.[0]?.path).toBe("/hello");
     expect(normalized.functions.hello.restApi?.apiKeyRequired).toBe(false);
+  });
+
+  test("supports cloudFormationServiceRoleArn in provider deployment", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      provider: {
+        deployment: {
+          cloudFormationServiceRoleArn:
+            "arn:aws:iam::123456789012:role/MyCloudFormationServiceRole",
+        },
+      },
+      functions: {},
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.provider.deployment?.cloudFormationServiceRoleArn).toBe(
+      "arn:aws:iam::123456789012:role/MyCloudFormationServiceRole",
+    );
+  });
+
+  test("selects cloudformation service role deploy mode when configured", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      provider: {
+        deployment: {
+          cloudFormationServiceRoleArn:
+            "arn:aws:iam::123456789012:role/MyCloudFormationServiceRole",
+        },
+      },
+      functions: {},
+    });
+    const normalized = normalizeConfig(raw);
+    expect(deployMode(normalized)).toBe("cloudformation-service-role");
+  });
+
+  test("rejects template-only mode when CDK asset metadata is present", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "awsy-template-test-"));
+    const templatePath = path.join(dir, "template.json");
+    fs.writeFileSync(
+      templatePath,
+      JSON.stringify({ Metadata: { "aws:asset:path": "asset.12345" } }),
+      "utf8",
+    );
+    expect(() => assertTemplateOnlyStack(templatePath)).toThrow(
+      "template-only stacks (no CDK assets)",
+    );
   });
 });

@@ -351,4 +351,35 @@ describe("compiler", () => {
       "cannot be combined with deploy/cloudformation role overrides",
     );
   });
+
+  test("rejects cloudFormationServiceRoleArn with deployment role overrides", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        provider: {
+          account: "123456789012",
+          region: "us-east-1",
+          deployment: {
+            cloudFormationServiceRoleArn:
+              "arn:aws:iam::123456789012:role/MyCloudFormationServiceRole",
+            deployRoleArn: "arn:aws:iam::123456789012:role/MyDeployRole",
+          },
+        },
+        functions: {
+          hello: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+          },
+        },
+      }),
+    );
+
+    expect(() => buildApp(config)).toThrow(
+      "cloudFormationServiceRoleArn cannot be combined with deployRoleArn/cloudFormationExecutionRoleArn",
+    );
+  });
 });

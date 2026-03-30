@@ -268,12 +268,20 @@ export function buildApp(
   const hasRoleOverrides = Boolean(
     deployment?.cloudFormationExecutionRoleArn || deployment?.deployRoleArn,
   );
+  const hasCloudFormationServiceRole = Boolean(
+    deployment?.cloudFormationServiceRoleArn,
+  );
   const inferredUseCliCredentials = hasAssetLocationOverrides && !hasRoleOverrides;
   const useCliCredentials =
     deployment?.useCliCredentials ?? inferredUseCliCredentials;
   if (useCliCredentials && hasRoleOverrides) {
     throw new Error(
       `provider.deployment.useCliCredentials=true cannot be combined with deploy/cloudformation role overrides. Choose one mode.`,
+    );
+  }
+  if (hasCloudFormationServiceRole && hasRoleOverrides) {
+    throw new Error(
+      `provider.deployment.cloudFormationServiceRoleArn cannot be combined with deployRoleArn/cloudFormationExecutionRoleArn in this mode.`,
     );
   }
   const hasExplicitDeploymentInfrastructure = Boolean(

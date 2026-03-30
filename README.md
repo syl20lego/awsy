@@ -182,6 +182,7 @@ You can provide CDK deployment infrastructure settings directly in YAML:
 
 - `provider.deployment.fileAssetsBucketName`
 - `provider.deployment.imageAssetsRepositoryName`
+- `provider.deployment.cloudFormationServiceRoleArn` (CloudFormation service role for template-only deploy mode)
 - `provider.deployment.cloudFormationExecutionRoleArn`
 - `provider.deployment.deployRoleArn`
 - `provider.deployment.qualifier`
@@ -200,6 +201,8 @@ Bootstrap inference behavior:
 - If role overrides are present (`cloudFormationExecutionRoleArn` or `deployRoleArn`), awsy uses `DefaultStackSynthesizer` unless you explicitly set `useCliCredentials`.
 - Explicit `useCliCredentials` in YAML always wins.
 - `useCliCredentials: true` cannot be combined with role overrides (`deployRoleArn` / `cloudFormationExecutionRoleArn`).
+- `cloudFormationServiceRoleArn` is template-only mode (no CDK asset publishing). In this mode, awsy deploys via `aws cloudformation deploy --role-arn`.
+- `cloudFormationServiceRoleArn` cannot be combined with `deployRoleArn` / `cloudFormationExecutionRoleArn`.
 
 Example:
 
@@ -241,6 +244,27 @@ Deploy:
 ```bash
 awsy deploy -c awsy.yml --region us-east-1
 ```
+
+CloudFormation service role + no bootstrap (template-only stacks):
+
+```yaml
+service: my-template-only-service
+provider:
+  region: us-east-1
+  stage: dev
+  deployment:
+    cloudFormationServiceRoleArn: arn:aws:iam::638914547607:role/MyCloudFormationServiceRole
+functions: {}
+```
+
+```bash
+awsy deploy -c awsy.yml --region us-east-1
+```
+
+Notes:
+
+- This mode is currently for template-only stacks (no CDK asset metadata).
+- If your stack includes Lambda/file/image assets, use the existing CDK deploy paths instead.
 
 Notes for this mode:
 

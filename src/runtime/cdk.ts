@@ -76,6 +76,7 @@ function hasCustomDeploymentOverrides(config: NormalizedServiceConfig): boolean 
   return Boolean(
     deployment?.fileAssetsBucketName ||
       deployment?.imageAssetsRepositoryName ||
+      deployment?.cloudFormationServiceRoleArn ||
       deployment?.cloudFormationExecutionRoleArn ||
       deployment?.deployRoleArn ||
       deployment?.useCliCredentials,
@@ -244,6 +245,74 @@ function runCdk(
   }
 }
 
+export function deployMode(config: NormalizedServiceConfig): "cdk" | "cloudformation-service-role" {
+  return config.provider.deployment?.cloudFormationServiceRoleArn
+    ? "cloudformation-service-role"
+    : "cdk";
+}
+
+function hasCdkAssetMetadata(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => hasCdkAssetMetadata(item));
+  }
+  if (value && typeof value === "object") {
+    for (const [key, nested] of Object.entries(value)) {
+      if (key === "aws:asset:path" || key === "aws:asset:property") {
+        return true;
+      }
+      if (hasCdkAssetMetadata(nested)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function assertTemplateOnlyStack(templateFile: string): void {
+  const template = JSON.parse(fs.readFileSync(templateFile, "utf8")) as unknown;
+  if (hasCdkAssetMetadata(template)) {
+    throw new Error(
+      `provider.deployment.cloudFormationServiceRoleArn currently supports template-only stacks (no CDK assets).\n` +
+        `Detected synthesized CDK asset metadata in template. Remove asset-backed resources (for example Lambda code/image assets) or use standard CDK deployment mode.`,
+    );
+  }
+}
+
+function runCloudFormationDeployWithRole(
+  config: NormalizedServiceConfig,
+  templateFile: string,
+  env: NodeJS.ProcessEnv,
+): void {
+  const roleArn = config.provider.deployment?.cloudFormationServiceRoleArn;
+  if (!roleArn) {
+    throw new Error("cloudFormationServiceRoleArn is required for CloudFormation service-role deployment mode.");
+  }
+  assertTemplateOnlyStack(templateFile);
+  const args = [
+    "cloudformation",
+    "deploy",
+    "--template-file",
+    templateFile,
+    "--stack-name",
+    config.stackName,
+    "--role-arn",
+    roleArn,
+    "--capabilities",
+    "CAPABILITY_IAM",
+    "CAPABILITY_NAMED_IAM",
+    "CAPABILITY_AUTO_EXPAND",
+    "--no-fail-on-empty-changeset",
+  ];
+  const result = spawnSync("aws", args, { env, encoding: "utf8" });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.status !== 0) {
+    throw new Error(
+      `CloudFormation deploy failed with service role.\nCommand: aws ${args.join(" ")}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+    );
+  }
+}
+
 function synthToTemp(config: NormalizedServiceConfig): string {
   const outdir = fs.mkdtempSync(path.join(os.tmpdir(), "awsy-cdk-"));
   const { app } = buildApp(config, { outdir });
@@ -276,6 +345,16 @@ export function cdkSynth(config: NormalizedServiceConfig): void {
 export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: boolean): void {
   const outdir = synthToTemp(config);
   const env = buildEnv(config);
+  const template = path.join(outdir, `${config.stackName}.template.json`);
+  if (deployMode(config) === "cloudformation-service-role") {
+    if (requireApproval) {
+      throw new Error(
+        `--require-approval is not supported when provider.deployment.cloudFormationServiceRoleArn is set. Use CloudFormation change-set review outside awsy for approval.`,
+      );
+    }
+    runCloudFormationDeployWithRole(config, template, env);
+    return;
+  }
   const deployArgs = [
     "deploy",
     config.stackName,

@@ -84,6 +84,7 @@ export const serviceConfigSchema = z.object({
         .object({
           fileAssetsBucketName: z.string().min(1).optional(),
           imageAssetsRepositoryName: z.string().min(1).optional(),
+          cloudFormationServiceRoleArn: z.string().min(1).optional(),
           cloudFormationExecutionRoleArn: z.string().min(1).optional(),
           deployRoleArn: z.string().min(1).optional(),
           qualifier: z.string().min(1).optional(),
@@ -157,6 +158,7 @@ export const normalizedServiceConfigSchema = z.object({
       .object({
         fileAssetsBucketName: z.string().min(1).optional(),
         imageAssetsRepositoryName: z.string().min(1).optional(),
+        cloudFormationServiceRoleArn: z.string().min(1).optional(),
         cloudFormationExecutionRoleArn: z.string().min(1).optional(),
         deployRoleArn: z.string().min(1).optional(),
         qualifier: z.string().min(1).optional(),
