@@ -23,9 +23,14 @@ describe("compiler", () => {
           },
         },
         storage: {
-          s3: { uploads: {} },
+          s3: { uploads: { autoDeleteObjects: true } },
           dynamodb: {
             users: { partitionKey: { name: "pk", type: "string" } },
+          },
+        },
+        provider: {
+          s3: {
+            cleanupRoleArn: "arn:aws:iam::123456789012:role/MyS3CleanupRole",
           },
         },
         messaging: {
@@ -41,6 +46,72 @@ describe("compiler", () => {
     expect(Object.keys(stackArtifact.template.Resources).length).toBeGreaterThan(0);
     expect(stackArtifact.template.Outputs).toHaveProperty("HttpApiUrl");
     expect(stackArtifact.template.Outputs).toHaveProperty("RestApiUrl");
+  });
+
+  test("keeps S3 bucket retained by default when autoDeleteObjects is not enabled", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        storage: {
+          s3: { uploads: {} },
+        },
+        functions: {},
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<
+      string,
+      { Type?: string; DeletionPolicy?: string }
+    >;
+    const bucket = Object.values(resources).find(
+      (resource) => resource.Type === "AWS::S3::Bucket",
+    );
+    expect(bucket?.DeletionPolicy).toBe("Retain");
+  });
+
+  test("enables S3 auto-delete only when explicitly configured and cleanup role is provided", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        provider: {
+          s3: {
+            cleanupRoleArn: "arn:aws:iam::123456789012:role/MyS3CleanupRole",
+          },
+        },
+        storage: {
+          s3: { uploads: { autoDeleteObjects: true } },
+        },
+        functions: {},
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<
+      string,
+      { Type?: string; DeletionPolicy?: string }
+    >;
+    const bucket = Object.values(resources).find(
+      (resource) => resource.Type === "AWS::S3::Bucket",
+    );
+    expect(bucket?.DeletionPolicy).toBe("Delete");
+  });
+
+  test("rejects S3 auto-delete when provider.s3.cleanupRoleArn is missing", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        storage: {
+          s3: { uploads: { autoDeleteObjects: true } },
+        },
+        functions: {},
+      }),
+    );
+    expect(() => buildApp(config)).toThrow(
+      "S3 auto-delete requires provider.s3.cleanupRoleArn",
+    );
   });
 
   test("requires API key for all REST routes when provider-level setting is enabled", () => {

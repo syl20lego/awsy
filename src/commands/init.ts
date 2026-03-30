@@ -5,6 +5,9 @@ const starter = `service: my-service
 provider:
   region: us-east-1
   stage: dev
+  s3:
+    # Optional role used for S3 object cleanup when autoDeleteObjects=true
+    cleanupRoleArn: arn:aws:iam::123456789012:role/MyS3CleanupRole
 
 functions:
   hello:
@@ -26,6 +29,7 @@ storage:
   s3:
     uploads:
       versioned: true
+      autoDeleteObjects: false
   dynamodb:
     users:
       partitionKey:

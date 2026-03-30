@@ -75,6 +75,11 @@ export const serviceConfigSchema = z.object({
       profile: z.string().optional(),
       stackName: z.string().optional(),
       tags: z.record(z.string(), z.string()).optional(),
+      s3: z
+        .object({
+          cleanupRoleArn: z.string().min(1).optional(),
+        })
+        .optional(),
       restApi: z
         .object({
           apiKeyRequired: z.boolean().optional(),
@@ -101,7 +106,10 @@ export const serviceConfigSchema = z.object({
       s3: z
         .record(
           z.string(),
-          z.object({ versioned: z.boolean().optional() }),
+          z.object({
+            versioned: z.boolean().optional(),
+            autoDeleteObjects: z.boolean().optional(),
+          }),
         )
         .optional(),
       dynamodb: z.record(z.string(), tableSchema).optional(),
@@ -150,6 +158,11 @@ export const normalizedServiceConfigSchema = z.object({
     profile: z.string().optional(),
     stackName: z.string().optional(),
     tags: z.record(z.string(), z.string()).optional(),
+    s3: z
+      .object({
+        cleanupRoleArn: z.string().min(1).optional(),
+      })
+      .optional(),
     restApi: z
       .object({
         apiKeyRequired: z.boolean().optional(),
@@ -175,6 +188,7 @@ export const normalizedServiceConfigSchema = z.object({
       z.string(),
       z.object({
         versioned: z.boolean().optional(),
+        autoDeleteObjects: z.boolean().optional(),
       }),
     ),
     dynamodb: z.record(z.string(), tableSchema),

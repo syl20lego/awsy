@@ -147,6 +147,31 @@ describe("config validation", () => {
     );
   });
 
+  test("supports provider s3 cleanupRoleArn and per-bucket autoDeleteObjects", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      provider: {
+        s3: {
+          cleanupRoleArn: "arn:aws:iam::123456789012:role/MyS3CleanupRole",
+        },
+      },
+      storage: {
+        s3: {
+          uploads: {
+            versioned: true,
+            autoDeleteObjects: true,
+          },
+        },
+      },
+      functions: {},
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.provider.s3?.cleanupRoleArn).toBe(
+      "arn:aws:iam::123456789012:role/MyS3CleanupRole",
+    );
+    expect(normalized.storage.s3.uploads.autoDeleteObjects).toBe(true);
+  });
+
   test("supports cloudFormationServiceRoleArn in provider deployment", () => {
     const raw = validateServiceConfig({
       service: "demo",

@@ -83,11 +83,24 @@ export class ServiceStack extends Stack {
     });
 
     const refs: Record<string, Construct> = {};
+    const hasAutoDeleteBucket = Object.values(config.storage.s3).some(
+      (bucket) => bucket.autoDeleteObjects === true,
+    );
+    if (hasAutoDeleteBucket && !config.provider.s3?.cleanupRoleArn) {
+      throw new Error(
+        `S3 auto-delete requires provider.s3.cleanupRoleArn. Set storage.s3.<bucket>.autoDeleteObjects=false or provide provider.s3.cleanupRoleArn.`,
+      );
+    }
 
     for (const [name, bucket] of Object.entries(config.storage.s3)) {
+      const autoDeleteObjects = bucket.autoDeleteObjects ?? false;
       refs[name] = new s3.Bucket(this, `Bucket${name}`, {
         bucketName: withStageName(name.toLowerCase(), config.provider.stage),
         versioned: bucket.versioned ?? false,
+        removalPolicy: autoDeleteObjects
+          ? cdk.RemovalPolicy.DESTROY
+          : cdk.RemovalPolicy.RETAIN,
+        autoDeleteObjects,
       });
     }
 
@@ -108,6 +121,7 @@ export class ServiceStack extends Stack {
           table.billingMode === "PROVISIONED"
             ? dynamodb.BillingMode.PROVISIONED
             : dynamodb.BillingMode.PAY_PER_REQUEST,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
       });
     }
 

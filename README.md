@@ -106,7 +106,7 @@ See `examples/service.yml` for a complete example.
 
 Top-level sections:
 - `service`
-- `provider` (`region`, `stage`, optional `account`, `profile`, `stackName`, `tags`, `restApi`, `deployment`)
+- `provider` (`region`, `stage`, optional `account`, `profile`, `stackName`, `tags`, `s3`, `restApi`, `deployment`)
 - `functions`
 - `storage` (`s3`, `dynamodb`)
 - `messaging` (`sqs`, `sns`)
@@ -117,6 +117,12 @@ Top-level sections:
 - a direct role ARN like `arn:aws:iam::<account-id>:role/<role-name>`
 
 Use one mode per function (do not mix role ARN and statement keys in the same function).
+
+S3 deletion behavior:
+
+- `storage.s3.<bucket>.autoDeleteObjects` is explicit opt-in (`false` by default).
+- If `autoDeleteObjects: true` is set on any bucket, provide `provider.s3.cleanupRoleArn`.
+- Without `autoDeleteObjects: true`, bucket deletion remains retain-safe.
 
 API events:
 
@@ -136,6 +142,8 @@ Example:
 provider:
   region: us-east-1
   stage: dev
+  s3:
+    cleanupRoleArn: arn:aws:iam::123456789012:role/MyS3CleanupRole
   restApi:
     apiKeyRequired: true
     cloudWatchRoleArn: arn:aws:iam::123456789012:role/MyApiGatewayCloudWatchRole
@@ -150,6 +158,12 @@ functions:
       rest:
         - method: GET
           path: /hello-rest
+
+storage:
+  s3:
+    uploads:
+      versioned: true
+      autoDeleteObjects: true
 ```
 
 `functions.<name>.handler` packaging behavior:
