@@ -12,6 +12,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syl20lego/awsy"
+  },
+  "bugs": {
+    "url": "https://github.com/syl20lego/awsy/issues"
+  },
+  "homepage": "https://github.com/syl20lego/awsy#readme",
   "type": "module",
   "private": false,
   "files": [
