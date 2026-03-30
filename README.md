@@ -10,6 +10,7 @@
 - Core v1 resources:
   - Lambda
   - API Gateway HTTP API
+  - API Gateway REST API
   - S3
   - DynamoDB
   - SQS
@@ -105,7 +106,7 @@ See `examples/service.yml` for a complete example.
 
 Top-level sections:
 - `service`
-- `provider` (`region`, `stage`, optional `account`, `profile`, `stackName`, `tags`, `deployment`)
+- `provider` (`region`, `stage`, optional `account`, `profile`, `stackName`, `tags`, `restApi`, `deployment`)
 - `functions`
 - `storage` (`s3`, `dynamodb`)
 - `messaging` (`sqs`, `sns`)
@@ -116,6 +117,38 @@ Top-level sections:
 - a direct role ARN like `arn:aws:iam::<account-id>:role/<role-name>`
 
 Use one mode per function (do not mix role ARN and statement keys in the same function).
+
+API events:
+
+- `functions.<name>.events.http` creates API Gateway HTTP API (v2) routes.
+- `functions.<name>.events.rest` creates API Gateway REST API (v1) routes.
+
+REST API key behavior:
+
+- Global: set `provider.restApi.apiKeyRequired: true` to require API keys on all REST routes.
+- Fallback per function: if global is not set, use `functions.<name>.restApi.apiKeyRequired`.
+- If neither is set, REST routes do not require API keys.
+
+Example:
+
+```yaml
+provider:
+  region: us-east-1
+  stage: dev
+  restApi:
+    apiKeyRequired: true
+
+functions:
+  hello:
+    handler: src/handlers/hello.handler
+    events:
+      http:
+        - method: GET
+          path: /hello
+      rest:
+        - method: GET
+          path: /hello-rest
+```
 
 `functions.<name>.handler` packaging behavior:
 

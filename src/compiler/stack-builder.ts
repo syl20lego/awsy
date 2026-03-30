@@ -1,5 +1,6 @@
 import cdk from "aws-cdk-lib";
 import { Duration, Stack, type StackProps, Tags } from "aws-cdk-lib";
+import * as apigw from "aws-cdk-lib/aws-apigateway";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -143,6 +144,19 @@ export class ServiceStack extends Stack {
         apiName: withStageName(config.service, config.provider.stage),
       },
     );
+    const hasRestRoutes = Object.values(config.functions).some(
+      (fn) => (fn.events?.rest?.length ?? 0) > 0,
+    );
+    const restApi = hasRestRoutes
+      ? new apigw.RestApi(this, "RestApi", {
+          restApiName: withStageName(`${config.service}-rest`, config.provider.stage),
+          deployOptions: {
+            stageName: config.provider.stage,
+          },
+        })
+      : undefined;
+    const globalRestApiKeyRequired = config.provider.restApi?.apiKeyRequired;
+    let hasAnyRestApiKeyRequired = false;
     const buildOutputs = prepareFunctionBuilds(config);
 
     for (const [name, fn] of Object.entries(config.functions)) {
@@ -204,9 +218,41 @@ export class ServiceStack extends Stack {
             ),
         });
       }
+
+      const functionRestApiKeyRequired =
+        globalRestApiKeyRequired ?? fn.restApi?.apiKeyRequired ?? false;
+      for (const route of fn.events?.rest ?? []) {
+        if (!restApi) {
+          continue;
+        }
+        const normalizedMethod = route.method.toUpperCase();
+        const resource = restApi.root.resourceForPath(route.path);
+        resource.addMethod(
+          normalizedMethod,
+          new apigw.LambdaIntegration(fnResource, { proxy: true }),
+          { apiKeyRequired: functionRestApiKeyRequired },
+        );
+        if (functionRestApiKeyRequired) {
+          hasAnyRestApiKeyRequired = true;
+        }
+      }
+    }
+
+    if (restApi && hasAnyRestApiKeyRequired) {
+      const apiKey = restApi.addApiKey("RestApiKey");
+      const usagePlan = restApi.addUsagePlan("RestApiUsagePlan", {
+        name: withStageName(`${config.service}-rest-plan`, config.provider.stage),
+      });
+      usagePlan.addApiKey(apiKey);
+      usagePlan.addApiStage({
+        stage: restApi.deploymentStage,
+      });
     }
 
     new cdk.CfnOutput(this, "HttpApiUrl", { value: httpApi.url ?? "n/a" });
+    if (restApi) {
+      new cdk.CfnOutput(this, "RestApiUrl", { value: restApi.url });
+    }
   }
 }
 

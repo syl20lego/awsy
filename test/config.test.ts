@@ -100,4 +100,30 @@ describe("config validation", () => {
     const normalized = normalizeConfig(raw);
     expect(normalized.functions.hello.build?.mode).toBe("external");
   });
+
+  test("supports REST API event routes and api key settings", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      provider: {
+        restApi: {
+          apiKeyRequired: true,
+        },
+      },
+      functions: {
+        hello: {
+          handler: "src/handlers/hello.handler",
+          events: {
+            rest: [{ method: "GET", path: "/hello" }],
+          },
+          restApi: {
+            apiKeyRequired: false,
+          },
+        },
+      },
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.provider.restApi?.apiKeyRequired).toBe(true);
+    expect(normalized.functions.hello.events?.rest?.[0]?.path).toBe("/hello");
+    expect(normalized.functions.hello.restApi?.apiKeyRequired).toBe(false);
+  });
 });

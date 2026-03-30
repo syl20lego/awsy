@@ -18,6 +18,9 @@ functions:
       http:
         - method: GET
           path: /hello
+      rest:
+        - method: GET
+          path: /hello-rest
 
 storage:
   s3:

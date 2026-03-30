@@ -16,7 +16,10 @@ describe("compiler", () => {
               command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
               handler: "src/hello.handler",
             },
-            events: { http: [{ method: "GET", path: "/hello" }] },
+            events: {
+              http: [{ method: "GET", path: "/hello" }],
+              rest: [{ method: "GET", path: "/hello-rest" }],
+            },
           },
         },
         storage: {
@@ -36,6 +39,78 @@ describe("compiler", () => {
     const stackArtifact = assembly.getStackArtifact(config.stackName);
     expect(stackArtifact).toBeTruthy();
     expect(Object.keys(stackArtifact.template.Resources).length).toBeGreaterThan(0);
+    expect(stackArtifact.template.Outputs).toHaveProperty("HttpApiUrl");
+    expect(stackArtifact.template.Outputs).toHaveProperty("RestApiUrl");
+  });
+
+  test("requires API key for all REST routes when provider-level setting is enabled", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        provider: {
+          restApi: {
+            apiKeyRequired: true,
+          },
+        },
+        functions: {
+          hello: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              rest: [{ method: "GET", path: "/hello" }],
+            },
+          },
+        },
+      }),
+    );
+
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string; Properties?: { ApiKeyRequired?: boolean } }>;
+    const restMethods = Object.values(resources).filter(
+      (resource) => resource.Type === "AWS::ApiGateway::Method",
+    );
+    expect(restMethods.length).toBeGreaterThan(0);
+    expect(restMethods.every((method) => method.Properties?.ApiKeyRequired === true)).toBe(true);
+  });
+
+  test("applies function-level REST API key when no provider-level setting exists", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        functions: {
+          hello: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            restApi: {
+              apiKeyRequired: true,
+            },
+            events: {
+              rest: [{ method: "GET", path: "/hello" }],
+            },
+          },
+        },
+      }),
+    );
+
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string; Properties?: { ApiKeyRequired?: boolean } }>;
+    const restMethods = Object.values(resources).filter(
+      (resource) => resource.Type === "AWS::ApiGateway::Method",
+    );
+    expect(restMethods.length).toBeGreaterThan(0);
+    expect(restMethods.every((method) => method.Properties?.ApiKeyRequired === true)).toBe(true);
   });
 
   test("supports direct role ARN in function iam list", () => {

@@ -34,6 +34,19 @@ export const functionSchema = z.object({
           }),
         )
         .optional(),
+      rest: z
+        .array(
+          z.object({
+            method: z.string().min(1),
+            path: z.string().min(1),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  restApi: z
+    .object({
+      apiKeyRequired: z.boolean().optional(),
     })
     .optional(),
 });
@@ -62,6 +75,11 @@ export const serviceConfigSchema = z.object({
       profile: z.string().optional(),
       stackName: z.string().optional(),
       tags: z.record(z.string(), z.string()).optional(),
+      restApi: z
+        .object({
+          apiKeyRequired: z.boolean().optional(),
+        })
+        .optional(),
       deployment: z
         .object({
           fileAssetsBucketName: z.string().min(1).optional(),
@@ -130,6 +148,11 @@ export const normalizedServiceConfigSchema = z.object({
     profile: z.string().optional(),
     stackName: z.string().optional(),
     tags: z.record(z.string(), z.string()).optional(),
+    restApi: z
+      .object({
+        apiKeyRequired: z.boolean().optional(),
+      })
+      .optional(),
     deployment: z
       .object({
         fileAssetsBucketName: z.string().min(1).optional(),
