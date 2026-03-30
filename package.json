@@ -1,6 +1,6 @@
 {
-  "name": "awsy",
-  "version": "0.0.1",
+  "name": "@syl20lego/awsy",
+  "version": "0.1.0",
   "description": "awsy (AWS YAML) is a TypeScript CLI that compiles YAML-defined AWS infrastructure to CDK/CloudFormation deployments.",
   "main": "dist/cli.js",
   "scripts": {
