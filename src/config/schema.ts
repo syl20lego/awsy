@@ -1,0 +1,197 @@
+import { z } from "zod";
+
+export const runtimeSchema = z.enum(["nodejs20.x", "nodejs22.x", 'nodejs24.x']);
+
+export const iamStatementSchema = z.object({
+  sid: z.string().optional(),
+  effect: z.enum(["Allow", "Deny"]).optional(),
+  actions: z.array(z.string()).min(1),
+  resources: z.array(z.string()).min(1),
+});
+
+export const functionSchema = z.object({
+  handler: z.string().min(1),
+  runtime: runtimeSchema.optional(),
+  timeout: z.number().int().min(1).max(900).optional(),
+  memorySize: z.number().int().min(128).max(10240).optional(),
+  environment: z.record(z.string(), z.string()).optional(),
+  iam: z.array(z.string()).optional(),
+  build: z
+    .object({
+      mode: z.enum(["typescript", "external"]).optional(),
+      command: z.string().min(1).optional(),
+      cwd: z.string().min(1).optional(),
+      handler: z.string().min(1).optional(),
+    })
+    .optional(),
+  events: z
+    .object({
+      http: z
+        .array(
+          z.object({
+            method: z.string().min(1),
+            path: z.string().min(1),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+});
+
+export const tableSchema = z.object({
+  partitionKey: z.object({
+    name: z.string().min(1),
+    type: z.enum(["string", "number", "binary"]),
+  }),
+  sortKey: z
+    .object({
+      name: z.string().min(1),
+      type: z.enum(["string", "number", "binary"]),
+    })
+    .optional(),
+  billingMode: z.enum(["PAY_PER_REQUEST", "PROVISIONED"]).optional(),
+});
+
+export const serviceConfigSchema = z.object({
+  service: z.string().min(1),
+  provider: z
+    .object({
+      region: z.string().optional(),
+      stage: z.string().optional(),
+      account: z.string().optional(),
+      profile: z.string().optional(),
+      stackName: z.string().optional(),
+      tags: z.record(z.string(), z.string()).optional(),
+      deployment: z
+        .object({
+          fileAssetsBucketName: z.string().min(1).optional(),
+          imageAssetsRepositoryName: z.string().min(1).optional(),
+          cloudFormationExecutionRoleArn: z.string().min(1).optional(),
+          deployRoleArn: z.string().min(1).optional(),
+          qualifier: z.string().min(1).optional(),
+          useCliCredentials: z.boolean().optional(),
+          requireBootstrap: z.boolean().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  functions: z.record(z.string(), functionSchema).optional(),
+  storage: z
+    .object({
+      s3: z
+        .record(
+          z.string(),
+          z.object({ versioned: z.boolean().optional() }),
+        )
+        .optional(),
+      dynamodb: z.record(z.string(), tableSchema).optional(),
+    })
+    .optional(),
+  messaging: z
+    .object({
+      sqs: z
+        .record(
+          z.string(),
+          z.object({
+            visibilityTimeout: z.number().int().min(0).max(43200).optional(),
+          }),
+        )
+        .optional(),
+      sns: z
+        .record(
+          z.string(),
+          z.object({
+            subscriptions: z
+              .array(
+                z.object({
+                  type: z.literal("sqs"),
+                  target: z.string().min(1),
+                }),
+              )
+              .optional(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  iam: z
+    .object({
+      statements: z.record(z.string(), iamStatementSchema).optional(),
+    })
+    .optional(),
+});
+
+export const normalizedServiceConfigSchema = z.object({
+  service: z.string().min(1),
+  provider: z.object({
+    region: z.string().min(1),
+    stage: z.string().min(1),
+    account: z.string().optional(),
+    profile: z.string().optional(),
+    stackName: z.string().optional(),
+    tags: z.record(z.string(), z.string()).optional(),
+    deployment: z
+      .object({
+        fileAssetsBucketName: z.string().min(1).optional(),
+        imageAssetsRepositoryName: z.string().min(1).optional(),
+        cloudFormationExecutionRoleArn: z.string().min(1).optional(),
+        deployRoleArn: z.string().min(1).optional(),
+        qualifier: z.string().min(1).optional(),
+        useCliCredentials: z.boolean().optional(),
+        requireBootstrap: z.boolean().optional(),
+      })
+      .optional(),
+  }),
+  functions: z.record(z.string(), functionSchema),
+  storage: z.object({
+    s3: z.record(
+      z.string(),
+      z.object({
+        versioned: z.boolean().optional(),
+      }),
+    ),
+    dynamodb: z.record(z.string(), tableSchema),
+  }),
+  messaging: z.object({
+    sqs: z.record(
+      z.string(),
+      z.object({
+        visibilityTimeout: z.number().int().min(0).max(43200).optional(),
+      }),
+    ),
+    sns: z.record(
+      z.string(),
+      z.object({
+        subscriptions: z
+          .array(
+            z.object({
+              type: z.literal("sqs"),
+              target: z.string().min(1),
+            }),
+          )
+          .optional(),
+      }),
+    ),
+  }),
+  iam: z.object({
+    statements: z.record(z.string(), iamStatementSchema),
+  }),
+  stackName: z.string().min(1),
+});
+
+export type RawServiceConfig = z.infer<typeof serviceConfigSchema>;
+export type IamStatementConfig = z.infer<typeof iamStatementSchema>;
+export type NormalizedServiceConfig = z.infer<
+  typeof normalizedServiceConfigSchema
+>;
+
+export function validateServiceConfig(input: unknown): RawServiceConfig {
+  const parsed = serviceConfigSchema.safeParse(input);
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid YAML config:\n${details}`);
+  }
+  return parsed.data;
+}

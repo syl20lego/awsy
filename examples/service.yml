@@ -1,0 +1,58 @@
+service: demo-api
+provider:
+  region: us-east-1
+  stage: dev
+  deployment:
+    # Optional advanced deploy controls:
+    fileAssetsBucketName: my-cdk-assets-us-east-1
+    imageAssetsRepositoryName: my-cdk-assets-ecr
+    cloudFormationExecutionRoleArn: arn:aws:iam::123456789012:role/MyCfnExecRole
+    deployRoleArn: arn:aws:iam::123456789012:role/MyCdkDeployRole
+    useCliCredentials: true
+    requireBootstrap: false
+
+functions:
+  hello:
+    handler: src/handlers/hello.handler
+    runtime: nodejs20.x
+    build:
+      mode: typescript
+    timeout: 10
+    memorySize: 256
+    environment:
+      USERS_TABLE: ref:users
+    iam:
+      - readUsers
+    events:
+      http:
+        - method: GET
+          path: /hello
+
+storage:
+  s3:
+    uploads:
+      versioned: true
+  dynamodb:
+    users:
+      partitionKey:
+        name: pk
+        type: string
+      billingMode: PAY_PER_REQUEST
+
+messaging:
+  sqs:
+    jobs: {}
+  sns:
+    events:
+      subscriptions:
+        - type: sqs
+          target: jobs
+
+iam:
+  statements:
+    readUsers:
+      actions:
+        - dynamodb:GetItem
+        - dynamodb:Query
+      resources:
+        - ref:users
