@@ -1,9 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import type { NormalizedServiceConfig } from "../config/normalize.js";
+/** Minimal config shape needed for function builds. */
+export interface BuildableConfig {
+  readonly functions: Readonly<
+    Record<
+      string,
+      {
+        readonly handler: string;
+        readonly build?: {
+          readonly mode?: string;
+          readonly command?: string;
+          readonly cwd?: string;
+          readonly handler?: string;
+        };
+      }
+    >
+  >;
+}
 
-interface BuildResult {
+export interface BuildResult {
   assetPath: string;
   handler: string;
 }
@@ -95,7 +111,7 @@ function runExternalBuild(
 }
 
 export function prepareFunctionBuilds(
-  config: NormalizedServiceConfig,
+  config: BuildableConfig,
 ): Record<string, BuildResult> {
   const output: Record<string, BuildResult> = {};
   for (const [functionName, fn] of Object.entries(config.functions)) {

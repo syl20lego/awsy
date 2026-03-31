@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution, resolveAwsConfig } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution, resolveModelOverrides } from "../runtime/aws.js";
 import { cdkDestroy } from "../runtime/cdk.js";
 
 export interface RemoveOptions {
@@ -11,7 +11,7 @@ export interface RemoveOptions {
 }
 
 export function runRemove(options: RemoveOptions): void {
-  const config = resolveAwsConfig(loadConfig(options.config), options);
-  assertAwsResolution(config);
-  cdkDestroy(config, options.force ?? false);
+  const model = resolveModelOverrides(loadModel(options.config), options);
+  assertModelResolution(model);
+  cdkDestroy(model, options.force ?? false);
 }

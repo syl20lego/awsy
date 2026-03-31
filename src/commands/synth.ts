@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution, resolveAwsConfig } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution, resolveModelOverrides } from "../runtime/aws.js";
 import { cdkSynth } from "../runtime/cdk.js";
 
 export interface SynthOptions {
@@ -10,7 +10,7 @@ export interface SynthOptions {
 }
 
 export function runSynth(options: SynthOptions): void {
-  const config = resolveAwsConfig(loadConfig(options.config), options);
-  assertAwsResolution(config);
-  cdkSynth(config);
+  const model = resolveModelOverrides(loadModel(options.config), options);
+  assertModelResolution(model);
+  cdkSynth(model);
 }

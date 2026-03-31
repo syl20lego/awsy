@@ -1,17 +1,18 @@
-import type { NormalizedServiceConfig } from "../../config/normalize.js";
-
-export function validateCrossDomainConfig(config: NormalizedServiceConfig): void {
-  const hasAutoDeleteBucket = Object.values(config.storage.s3).some(
-    (bucket) => bucket.autoDeleteObjects === true,
-  );
-  if (hasAutoDeleteBucket && !config.provider.s3?.cleanupRoleArn) {
-    throw new Error(
-      `S3 auto-delete requires provider.s3.cleanupRoleArn. Set storage.s3.<bucket>.autoDeleteObjects=false or provide provider.s3.cleanupRoleArn.`,
-    );
-  }
+/** Minimal provider shape needed for deployment mode validation. */
+interface DeploymentValidationInput {
+  readonly provider: {
+    readonly deployment?: {
+      readonly fileAssetsBucketName?: string;
+      readonly imageAssetsRepositoryName?: string;
+      readonly cloudFormationServiceRoleArn?: string;
+      readonly cloudFormationExecutionRoleArn?: string;
+      readonly deployRoleArn?: string;
+      readonly useCliCredentials?: boolean;
+    };
+  };
 }
 
-export function validateDeploymentMode(config: NormalizedServiceConfig): void {
+export function validateDeploymentMode(config: DeploymentValidationInput): void {
   const deployment = config.provider.deployment;
   const hasAssetLocationOverrides = Boolean(
     deployment?.fileAssetsBucketName || deployment?.imageAssetsRepositoryName,

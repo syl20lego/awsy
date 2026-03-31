@@ -1,8 +1,8 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution } from "../runtime/aws.js";
 
 export function runValidate(configPath: string): void {
-  const config = loadConfig(configPath);
-  assertAwsResolution(config);
+  const model = loadModel(configPath);
+  assertModelResolution(model);
   process.stdout.write(`Config valid: ${configPath}\n`);
 }

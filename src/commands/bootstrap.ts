@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution, resolveAwsConfig } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution, resolveModelOverrides } from "../runtime/aws.js";
 import { cdkBootstrap } from "../runtime/cdk.js";
 
 export interface BootstrapOptions {
@@ -10,7 +10,7 @@ export interface BootstrapOptions {
 }
 
 export function runBootstrap(options: BootstrapOptions): void {
-  const config = resolveAwsConfig(loadConfig(options.config), options);
-  assertAwsResolution(config);
-  cdkBootstrap(config);
+  const model = resolveModelOverrides(loadModel(options.config), options);
+  assertModelResolution(model);
+  cdkBootstrap(model);
 }

@@ -4,9 +4,17 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import type { NormalizedServiceConfig } from "../config/normalize.js";
+import type { ServiceModel } from "../compiler/model.js";
 import { buildApp } from "../compiler/stack-builder.js";
 
 const require = createRequire(import.meta.url);
+
+/**
+ * Config shape accepted by CDK runtime operations.
+ * Both NormalizedServiceConfig and ServiceModel satisfy this
+ * through structural compatibility.
+ */
+type CdkRuntimeConfig = ServiceModel | NormalizedServiceConfig;
 
 class CdkBootstrapMissingError extends Error {
   constructor(
@@ -71,7 +79,7 @@ class CdkBootstrapBucketConflictError extends Error {
   }
 }
 
-function hasCustomDeploymentOverrides(config: NormalizedServiceConfig): boolean {
+function hasCustomDeploymentOverrides(config: CdkRuntimeConfig): boolean {
   const deployment = config.provider.deployment;
   return Boolean(
     deployment?.fileAssetsBucketName ||
@@ -90,7 +98,7 @@ function extractAccountFromRoleArn(roleArn?: string): string | undefined {
 }
 
 function inferBootstrapAccountRegion(
-  config: NormalizedServiceConfig,
+  config: CdkRuntimeConfig,
   output: string,
   env: NodeJS.ProcessEnv,
 ): { account?: string; region?: string } {
@@ -149,7 +157,7 @@ function resolveCdkBin(): string {
 }
 
 function runCdk(
-  config: NormalizedServiceConfig,
+  config: CdkRuntimeConfig,
   args: string[],
   env: NodeJS.ProcessEnv,
 ): void {
@@ -245,7 +253,7 @@ function runCdk(
   }
 }
 
-export function deployMode(config: NormalizedServiceConfig): "cdk" | "cloudformation-service-role" {
+export function deployMode(config: CdkRuntimeConfig): "cdk" | "cloudformation-service-role" {
   return config.provider.deployment?.cloudFormationServiceRoleArn
     ? "cloudformation-service-role"
     : "cdk";
@@ -279,7 +287,7 @@ export function assertTemplateOnlyStack(templateFile: string): void {
 }
 
 function runCloudFormationDeployWithRole(
-  config: NormalizedServiceConfig,
+  config: CdkRuntimeConfig,
   templateFile: string,
   env: NodeJS.ProcessEnv,
 ): void {
@@ -313,14 +321,14 @@ function runCloudFormationDeployWithRole(
   }
 }
 
-function synthToTemp(config: NormalizedServiceConfig): string {
+function synthToTemp(config: CdkRuntimeConfig): string {
   const outdir = fs.mkdtempSync(path.join(os.tmpdir(), "awsy-cdk-"));
   const { app } = buildApp(config, { outdir });
   app.synth();
   return outdir;
 }
 
-function buildEnv(config: NormalizedServiceConfig): NodeJS.ProcessEnv {
+function buildEnv(config: CdkRuntimeConfig): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (config.provider.profile) env.AWS_PROFILE = config.provider.profile;
   env.AWS_REGION = config.provider.region;
@@ -335,7 +343,7 @@ function buildEnv(config: NormalizedServiceConfig): NodeJS.ProcessEnv {
   return env;
 }
 
-function printStackOutputs(config: NormalizedServiceConfig, env: NodeJS.ProcessEnv): void {
+function printStackOutputs(config: CdkRuntimeConfig, env: NodeJS.ProcessEnv): void {
   const result = spawnSync(
     "aws",
     [
@@ -367,14 +375,14 @@ function printStackOutputs(config: NormalizedServiceConfig, env: NodeJS.ProcessE
   }
 }
 
-export function cdkSynth(config: NormalizedServiceConfig): void {
+export function cdkSynth(config: CdkRuntimeConfig): void {
   const outdir = synthToTemp(config);
   const template = path.join(outdir, `${config.stackName}.template.json`);
   const content = fs.readFileSync(template, "utf8");
   process.stdout.write(content);
 }
 
-export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: boolean): void {
+export function cdkDeploy(config: CdkRuntimeConfig, requireApproval: boolean): void {
   const outdir = synthToTemp(config);
   const env = buildEnv(config);
   const template = path.join(outdir, `${config.stackName}.template.json`);
@@ -431,12 +439,12 @@ export function cdkDeploy(config: NormalizedServiceConfig, requireApproval: bool
   }
 }
 
-export function cdkDiff(config: NormalizedServiceConfig): void {
+export function cdkDiff(config: CdkRuntimeConfig): void {
   const outdir = synthToTemp(config);
   runCdk(config, ["diff", config.stackName, "--app", outdir], buildEnv(config));
 }
 
-export function cdkDestroy(config: NormalizedServiceConfig, force: boolean): void {
+export function cdkDestroy(config: CdkRuntimeConfig, force: boolean): void {
   const outdir = synthToTemp(config);
   runCdk(
     config,
@@ -445,7 +453,7 @@ export function cdkDestroy(config: NormalizedServiceConfig, force: boolean): voi
   );
 }
 
-export function cdkBootstrap(config: NormalizedServiceConfig): void {
+export function cdkBootstrap(config: CdkRuntimeConfig): void {
   const env = buildEnv(config);
   const target = config.provider.account
     ? `aws://${config.provider.account}/${config.provider.region}`

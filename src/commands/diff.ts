@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution, resolveAwsConfig } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution, resolveModelOverrides } from "../runtime/aws.js";
 import { cdkDiff } from "../runtime/cdk.js";
 
 export interface DiffOptions {
@@ -10,7 +10,7 @@ export interface DiffOptions {
 }
 
 export function runDiff(options: DiffOptions): void {
-  const config = resolveAwsConfig(loadConfig(options.config), options);
-  assertAwsResolution(config);
-  cdkDiff(config);
+  const model = resolveModelOverrides(loadModel(options.config), options);
+  assertModelResolution(model);
+  cdkDiff(model);
 }

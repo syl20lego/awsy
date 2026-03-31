@@ -1,5 +1,5 @@
-import { loadConfig } from "../config/index.js";
-import { assertAwsResolution, resolveAwsConfig } from "../runtime/aws.js";
+import { loadModel } from "../config/loader.js";
+import { assertModelResolution, resolveModelOverrides } from "../runtime/aws.js";
 import { cdkDeploy } from "../runtime/cdk.js";
 
 export interface DeployOptions {
@@ -11,7 +11,7 @@ export interface DeployOptions {
 }
 
 export function runDeploy(options: DeployOptions): void {
-  const config = resolveAwsConfig(loadConfig(options.config), options);
-  assertAwsResolution(config);
-  cdkDeploy(config, options.requireApproval ?? false);
+  const model = resolveModelOverrides(loadModel(options.config), options);
+  assertModelResolution(model);
+  cdkDeploy(model, options.requireApproval ?? false);
 }

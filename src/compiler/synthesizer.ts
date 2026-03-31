@@ -1,8 +1,22 @@
 import cdk from "aws-cdk-lib";
-import type { NormalizedServiceConfig } from "../config/normalize.js";
+
+/** Minimal provider shape needed by the synthesizer. */
+interface SynthesizerInput {
+  readonly provider: {
+    readonly deployment?: {
+      readonly fileAssetsBucketName?: string;
+      readonly imageAssetsRepositoryName?: string;
+      readonly cloudFormationExecutionRoleArn?: string;
+      readonly deployRoleArn?: string;
+      readonly qualifier?: string;
+      readonly useCliCredentials?: boolean;
+      readonly requireBootstrap?: boolean;
+    };
+  };
+}
 
 export function createStackSynthesizer(
-  config: NormalizedServiceConfig,
+  config: SynthesizerInput,
 ): cdk.IStackSynthesizer {
   const deployment = config.provider.deployment;
   const hasAssetLocationOverrides = Boolean(

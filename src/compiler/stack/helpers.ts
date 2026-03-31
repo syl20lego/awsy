@@ -4,7 +4,14 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
-import type { IamStatementConfig } from "../../config/schema.js";
+
+/** Minimal IAM statement shape accepted by resolveIamPolicy. */
+export interface IamStatementInput {
+  readonly sid?: string;
+  readonly effect?: "Allow" | "Deny";
+  readonly actions: readonly string[];
+  readonly resources: readonly string[];
+}
 
 export function withStageName(base: string, stage: string): string {
   return `${base}-${stage}`;
@@ -15,7 +22,7 @@ export function isIamRoleArn(value: string): boolean {
 }
 
 export function resolveIamPolicy(
-  statement: IamStatementConfig,
+  statement: IamStatementInput,
   resources: Record<string, Construct>,
 ): iam.PolicyStatement {
   const resolvedResources = statement.resources.map((res) => {
@@ -45,7 +52,7 @@ export function resolveIamPolicy(
   return new iam.PolicyStatement({
     sid: statement.sid,
     effect: statement.effect === "Deny" ? iam.Effect.DENY : iam.Effect.ALLOW,
-    actions: statement.actions,
+    actions: [...statement.actions],
     resources: resolvedResources,
   });
 }
