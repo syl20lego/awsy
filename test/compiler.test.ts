@@ -516,4 +516,195 @@ describe("compiler", () => {
       "cloudFormationServiceRoleArn cannot be combined with deployRoleArn/cloudFormationExecutionRoleArn",
     );
   });
+
+  test("creates S3 event notification when s3 event is configured", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        storage: {
+          s3: { uploads: {} },
+        },
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              s3: [{ bucket: "ref:uploads", events: ["s3:ObjectCreated:*"] }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasS3Notification = Object.values(resources).some(
+      (r) => r.Type === "Custom::S3BucketNotifications",
+    );
+    expect(hasS3Notification).toBe(true);
+  });
+
+  test("creates SQS event source mapping when sqs event is configured", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        messaging: {
+          sqs: { jobs: {} },
+        },
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              sqs: [{ queue: "ref:jobs", batchSize: 5 }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasEventSourceMapping = Object.values(resources).some(
+      (r) => r.Type === "AWS::Lambda::EventSourceMapping",
+    );
+    expect(hasEventSourceMapping).toBe(true);
+  });
+
+  test("creates SNS subscription when sns event is configured", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        messaging: {
+          sns: { alerts: {} },
+        },
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              sns: [{ topic: "ref:alerts" }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasSnsSubscription = Object.values(resources).some(
+      (r) => r.Type === "AWS::SNS::Subscription",
+    );
+    expect(hasSnsSubscription).toBe(true);
+  });
+
+  test("creates DynamoDB stream event source when dynamodb event is configured", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        storage: {
+          dynamodb: {
+            orders: {
+              partitionKey: { name: "pk", type: "string" },
+              stream: "NEW_AND_OLD_IMAGES",
+            },
+          },
+        },
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              dynamodb: [{ table: "ref:orders", startingPosition: "LATEST" }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasEventSourceMapping = Object.values(resources).some(
+      (r) => r.Type === "AWS::Lambda::EventSourceMapping",
+    );
+    expect(hasEventSourceMapping).toBe(true);
+  });
+
+  test("creates EventBridge rule when eventbridge schedule event is configured", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              eventbridge: [{ schedule: "rate(5 minutes)" }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasEventsRule = Object.values(resources).some(
+      (r) => r.Type === "AWS::Events::Rule",
+    );
+    expect(hasEventsRule).toBe(true);
+  });
+
+  test("supports eventbridge event pattern", () => {
+    const config = normalizeConfig(
+      validateServiceConfig({
+        service: "demo",
+        functions: {
+          processor: {
+            handler: "src/hello.handler",
+            build: {
+              mode: "external",
+              command: "node -e \"require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/hello.js','exports.handler=async()=>({statusCode:200,body:\\\"ok\\\"});')\"",
+              handler: "src/hello.handler",
+            },
+            events: {
+              eventbridge: [{ eventPattern: { source: ["orders"] } }],
+            },
+          },
+        },
+      }),
+    );
+    const { app } = buildApp(config);
+    const assembly = app.synth();
+    const stackArtifact = assembly.getStackArtifact(config.stackName);
+    const resources = stackArtifact.template.Resources as Record<string, { Type?: string }>;
+    const hasEventsRule = Object.values(resources).some(
+      (r) => r.Type === "AWS::Events::Rule",
+    );
+    expect(hasEventsRule).toBe(true);
+  });
 });

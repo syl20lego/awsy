@@ -216,4 +216,64 @@ describe("config validation", () => {
       "template-only stacks (no CDK assets)",
     );
   });
+
+  test("supports new event types in function schema", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      storage: {
+        s3: { uploads: {} },
+        dynamodb: {
+          users: {
+            partitionKey: { name: "pk", type: "string" },
+            stream: "NEW_AND_OLD_IMAGES",
+          },
+        },
+      },
+      messaging: {
+        sqs: { jobs: {} },
+        sns: { alerts: {} },
+      },
+      functions: {
+        processor: {
+          handler: "src/handler.process",
+          events: {
+            s3: [{ bucket: "ref:uploads", events: ["s3:ObjectCreated:*"] }],
+            sqs: [{ queue: "ref:jobs", batchSize: 10 }],
+            sns: [{ topic: "ref:alerts" }],
+            dynamodb: [
+              {
+                table: "ref:users",
+                batchSize: 100,
+                startingPosition: "LATEST",
+              },
+            ],
+            eventbridge: [{ schedule: "rate(5 minutes)" }],
+          },
+        },
+      },
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.functions.processor.events?.s3).toHaveLength(1);
+    expect(normalized.functions.processor.events?.sqs).toHaveLength(1);
+    expect(normalized.functions.processor.events?.sns).toHaveLength(1);
+    expect(normalized.functions.processor.events?.dynamodb).toHaveLength(1);
+    expect(normalized.functions.processor.events?.eventbridge).toHaveLength(1);
+  });
+
+  test("supports dynamodb stream option", () => {
+    const raw = validateServiceConfig({
+      service: "demo",
+      storage: {
+        dynamodb: {
+          users: {
+            partitionKey: { name: "pk", type: "string" },
+            stream: "NEW_AND_OLD_IMAGES",
+          },
+        },
+      },
+      functions: {},
+    });
+    const normalized = normalizeConfig(raw);
+    expect(normalized.storage.dynamodb.users.stream).toBe("NEW_AND_OLD_IMAGES");
+  });
 });

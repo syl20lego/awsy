@@ -30,6 +30,17 @@ functions:
       http:
         - method: GET
           path: /hello
+      sqs:
+        - queue: ref:jobs
+          batchSize: 10
+      sns:
+        - topic: ref:events
+      dynamodb:
+        - table: ref:users
+          batchSize: 100
+          startingPosition: LATEST
+      eventbridge:
+        - schedule: rate(1 hour)
 
 storage:
   s3:
@@ -42,6 +53,7 @@ storage:
         name: pk
         type: string
       billingMode: PAY_PER_REQUEST
+      stream: NEW_AND_OLD_IMAGES
 
 messaging:
   sqs:

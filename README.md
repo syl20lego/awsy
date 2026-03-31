@@ -15,6 +15,7 @@
   - DynamoDB
   - SQS
   - SNS
+  - EventBridge
   - IAM statement bindings for functions
 
 ## Install
@@ -124,10 +125,40 @@ S3 deletion behavior:
 - If `autoDeleteObjects: true` is set on any bucket, provide `provider.s3.cleanupRoleArn`.
 - Without `autoDeleteObjects: true`, bucket deletion remains retain-safe.
 
+## Compiler architecture (maintainers)
+
+To keep changes safer and easier to extend, the compiler is split by responsibility:
+
+- `src/compiler/stack-builder.ts`: orchestration only.
+- `src/compiler/stack/validation.ts`: cross-domain validation guards.
+- `src/compiler/synthesizer.ts`: deployment synthesizer selection.
+- `src/compiler/stack/domains/s3.ts`: S3 bucket synthesis.
+- `src/compiler/stack/domains/dynamodb.ts`: DynamoDB table synthesis.
+- `src/compiler/stack/domains/sqs.ts`: SQS queue synthesis.
+- `src/compiler/stack/domains/sns.ts`: SNS topic synthesis.
+- `src/compiler/stack/domains/eventbridge.ts`: EventBridge rule synthesis and Lambda event binding.
+- `src/compiler/stack/domains/functions.ts`: Lambda + IAM. Returns `EventBinding[]` declarations.
+- `src/compiler/stack/domains/apis.ts`: receives events, creates HTTP/REST APIs, binds routes, configures auth, emits outputs.
+- `src/compiler/stack/helpers.ts`: shared utility helpers (`withStageName`, IAM resolution).
+- `src/compiler/stack/types.ts`: shared `CompilationContext` and `EventBinding` discriminated union.
+
+Domains have **no cross-imports**. Functions declares events; each domain processes its own event types.
+
+Compiler flow: `validate -> create resources (s3/dynamodb/sqs/sns) -> create functions (collect events) -> bind events (s3/dynamodb/sqs/sns/eventbridge/apis)`.
+
 API events:
 
 - `functions.<name>.events.http` creates API Gateway HTTP API (v2) routes.
 - `functions.<name>.events.rest` creates API Gateway REST API (v1) routes.
+- `functions.<name>.events.s3` triggers Lambda from S3 bucket notifications.
+- `functions.<name>.events.sqs` triggers Lambda from SQS queue messages.
+- `functions.<name>.events.sns` triggers Lambda from SNS topic subscriptions.
+- `functions.<name>.events.dynamodb` triggers Lambda from DynamoDB Streams.
+- `functions.<name>.events.eventbridge` triggers Lambda from EventBridge rules (schedule or event pattern).
+
+DynamoDB stream support:
+- Set `storage.dynamodb.<table>.stream` to enable DynamoDB Streams (values: NEW_IMAGE, OLD_IMAGE, NEW_AND_OLD_IMAGES, KEYS_ONLY).
+- Required when using `functions.<name>.events.dynamodb`.
 
 REST API key behavior:
 
@@ -158,6 +189,11 @@ functions:
       rest:
         - method: GET
           path: /hello-rest
+      sqs:
+        - queue: ref:jobs
+          batchSize: 10
+      eventbridge:
+        - schedule: rate(1 hour)
 
 storage:
   s3:

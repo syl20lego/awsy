@@ -1,71 +1,16 @@
 import cdk from "aws-cdk-lib";
-import { Duration, Stack, type StackProps, Tags } from "aws-cdk-lib";
-import * as apigw from "aws-cdk-lib/aws-apigateway";
-import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
-import * as apigwv2Integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as s3 from "aws-cdk-lib/aws-s3";
-import * as sns from "aws-cdk-lib/aws-sns";
-import * as sqs from "aws-cdk-lib/aws-sqs";
+import { Stack, type StackProps, Tags } from "aws-cdk-lib";
 import { Construct } from "constructs";
-import type { IamStatementConfig } from "../config/schema.js";
 import type { NormalizedServiceConfig } from "../config/normalize.js";
-import { prepareFunctionBuilds } from "../runtime/build.js";
-
-function attrType(
-  value: "string" | "number" | "binary",
-): dynamodb.AttributeType {
-  if (value === "string") return dynamodb.AttributeType.STRING;
-  if (value === "number") return dynamodb.AttributeType.NUMBER;
-  return dynamodb.AttributeType.BINARY;
-}
-
-function withStageName(base: string, stage: string): string {
-  return `${base}-${stage}`;
-}
-
-function resolveIamPolicy(
-  statement: IamStatementConfig,
-  resources: Record<string, Construct>,
-): iam.PolicyStatement {
-  const resolvedResources = statement.resources.map((res) => {
-    if (res.startsWith("ref:")) {
-      const key = res.replace("ref:", "");
-      const value = resources[key];
-      if (!value) {
-        throw new Error(`IAM reference "${key}" not found`);
-      }
-      if ("bucketArn" in value) {
-        return (value as s3.Bucket).bucketArn;
-      }
-      if ("queueArn" in value) {
-        return (value as sqs.Queue).queueArn;
-      }
-      if ("topicArn" in value) {
-        return (value as sns.Topic).topicArn;
-      }
-      if ("tableArn" in value) {
-        return (value as dynamodb.Table).tableArn;
-      }
-      throw new Error(`Unsupported ref target "${key}" in IAM resource`);
-    }
-    return res;
-  });
-
-  return new iam.PolicyStatement({
-    sid: statement.sid,
-    effect:
-      statement.effect === "Deny" ? iam.Effect.DENY : iam.Effect.ALLOW,
-    actions: statement.actions,
-    resources: resolvedResources,
-  });
-}
-
-function isIamRoleArn(value: string): boolean {
-  return /^arn:aws:iam::\d{12}:role\/.+/.test(value);
-}
+import { synthesizeS3, bindS3Events } from "./stack/domains/s3.js";
+import { synthesizeDynamoDB, bindDynamoDBStreamEvents } from "./stack/domains/dynamodb.js";
+import { synthesizeSQS, bindSQSEvents } from "./stack/domains/sqs.js";
+import { synthesizeSNS, bindSNSEvents } from "./stack/domains/sns.js";
+import { bindEventBridgeEvents } from "./stack/domains/eventbridge.js";
+import { synthesizeApis } from "./stack/domains/apis.js";
+import { synthesizeFunctions } from "./stack/domains/functions.js";
+import { createStackSynthesizer } from "./synthesizer.js";
+import { validateCrossDomainConfig, validateDeploymentMode } from "./stack/validation.js";
 
 export class ServiceStack extends Stack {
   constructor(
@@ -82,205 +27,26 @@ export class ServiceStack extends Stack {
       Tags.of(this).add(k, v);
     });
 
+    validateCrossDomainConfig(config);
     const refs: Record<string, Construct> = {};
-    const hasAutoDeleteBucket = Object.values(config.storage.s3).some(
-      (bucket) => bucket.autoDeleteObjects === true,
-    );
-    if (hasAutoDeleteBucket && !config.provider.s3?.cleanupRoleArn) {
-      throw new Error(
-        `S3 auto-delete requires provider.s3.cleanupRoleArn. Set storage.s3.<bucket>.autoDeleteObjects=false or provide provider.s3.cleanupRoleArn.`,
-      );
-    }
+    const ctx = { stack: this, config, refs };
 
-    for (const [name, bucket] of Object.entries(config.storage.s3)) {
-      const autoDeleteObjects = bucket.autoDeleteObjects ?? false;
-      refs[name] = new s3.Bucket(this, `Bucket${name}`, {
-        bucketName: withStageName(name.toLowerCase(), config.provider.stage),
-        versioned: bucket.versioned ?? false,
-        removalPolicy: autoDeleteObjects
-          ? cdk.RemovalPolicy.DESTROY
-          : cdk.RemovalPolicy.RETAIN,
-        autoDeleteObjects,
-      });
-    }
+    // Phase 1: Create infrastructure resources
+    synthesizeS3(ctx);
+    synthesizeDynamoDB(ctx);
+    synthesizeSQS(ctx);
+    synthesizeSNS(ctx);
 
-    for (const [name, table] of Object.entries(config.storage.dynamodb)) {
-      refs[name] = new dynamodb.Table(this, `Table${name}`, {
-        tableName: withStageName(name, config.provider.stage),
-        partitionKey: {
-          name: table.partitionKey.name,
-          type: attrType(table.partitionKey.type),
-        },
-        sortKey: table.sortKey
-          ? {
-              name: table.sortKey.name,
-              type: attrType(table.sortKey.type),
-            }
-          : undefined,
-        billingMode:
-          table.billingMode === "PROVISIONED"
-            ? dynamodb.BillingMode.PROVISIONED
-            : dynamodb.BillingMode.PAY_PER_REQUEST,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
-      });
-    }
+    // Phase 2: Create functions and collect event declarations
+    const { events } = synthesizeFunctions(ctx);
 
-    for (const [name, queue] of Object.entries(config.messaging.sqs)) {
-      refs[name] = new sqs.Queue(this, `Queue${name}`, {
-        queueName: withStageName(name, config.provider.stage),
-        visibilityTimeout: queue.visibilityTimeout
-          ? Duration.seconds(queue.visibilityTimeout)
-          : undefined,
-      });
-    }
-
-    for (const [name, topic] of Object.entries(config.messaging.sns)) {
-      const topicResource = new sns.Topic(this, `Topic${name}`, {
-        topicName: withStageName(name, config.provider.stage),
-      });
-      refs[name] = topicResource;
-      for (const subscription of topic.subscriptions ?? []) {
-        if (subscription.type === "sqs") {
-          const queueRef = refs[subscription.target];
-          if (!queueRef || !("queueArn" in queueRef)) {
-            throw new Error(
-              `SNS subscription target "${subscription.target}" is not an SQS queue`,
-            );
-          }
-        }
-      }
-    }
-
-    const hasHttpRoutes = Object.values(config.functions).some(
-      (fn) => (fn.events?.http?.length ?? 0) > 0,
-    );
-    const httpApi = hasHttpRoutes
-      ? new apigwv2.HttpApi(this, "HttpApi", {
-          apiName: withStageName(config.service, config.provider.stage),
-        })
-      : undefined;
-    const hasRestRoutes = Object.values(config.functions).some(
-      (fn) => (fn.events?.rest?.length ?? 0) > 0,
-    );
-    const providedRestApiCloudWatchRoleArn =
-      config.provider.restApi?.cloudWatchRoleArn;
-    const restApi = hasRestRoutes
-      ? new apigw.RestApi(this, "RestApi", {
-          restApiName: withStageName(`${config.service}-rest`, config.provider.stage),
-          deployOptions: {
-            stageName: config.provider.stage,
-          },
-          cloudWatchRole: providedRestApiCloudWatchRoleArn ? false : undefined,
-        })
-      : undefined;
-    if (restApi && providedRestApiCloudWatchRoleArn) {
-      new apigw.CfnAccount(this, "RestApiCloudWatchAccount", {
-        cloudWatchRoleArn: providedRestApiCloudWatchRoleArn,
-      });
-    }
-    const globalRestApiKeyRequired = config.provider.restApi?.apiKeyRequired;
-    let hasAnyRestApiKeyRequired = false;
-    const buildOutputs = prepareFunctionBuilds(config);
-
-    for (const [name, fn] of Object.entries(config.functions)) {
-      const iamEntries = fn.iam ?? [];
-      const roleArnEntry = iamEntries.find((entry) => isIamRoleArn(entry));
-      const inlineStatementRefs = iamEntries.filter((entry) => !isIamRoleArn(entry));
-      if (roleArnEntry && inlineStatementRefs.length > 0) {
-        throw new Error(
-          `Function "${name}" mixes a role ARN with iam statement references. Use either a role ARN or iam.statements keys, not both.`,
-        );
-      }
-      const importedRole = roleArnEntry
-        ? iam.Role.fromRoleArn(
-            this,
-            `FunctionRole${name}`,
-            roleArnEntry,
-            {
-              mutable: false,
-            },
-          )
-        : undefined;
-
-      const build = buildOutputs[name];
-      const fnResource = new lambda.Function(this, `Function${name}`, {
-        functionName: withStageName(name, config.provider.stage),
-        runtime:
-          fn.runtime === "nodejs22.x"
-            ? lambda.Runtime.NODEJS_22_X
-            : lambda.Runtime.NODEJS_20_X,
-        handler: build.handler,
-        code: lambda.Code.fromAsset(build.assetPath),
-        timeout: Duration.seconds(fn.timeout ?? 30),
-        memorySize: fn.memorySize ?? 256,
-        environment: fn.environment,
-        role: importedRole,
-      });
-      refs[name] = fnResource;
-
-      for (const policyName of inlineStatementRefs) {
-        const statement = config.iam.statements[policyName];
-        if (!statement) {
-          throw new Error(
-            `Function "${name}" references unknown IAM statement "${policyName}". Use a defined iam.statements key or a role ARN (arn:aws:iam::<account>:role/<name>).`,
-          );
-        }
-        fnResource.addToRolePolicy(resolveIamPolicy(statement, refs));
-      }
-
-      for (const route of fn.events?.http ?? []) {
-        if (!httpApi) {
-          continue;
-        }
-        httpApi.addRoutes({
-          path: route.path,
-          methods: [
-            route.method.toUpperCase() as apigwv2.HttpMethod,
-          ],
-          integration:
-            new apigwv2Integrations.HttpLambdaIntegration(
-              `${name}-${route.method}-${route.path}`,
-              fnResource,
-            ),
-        });
-      }
-
-      const functionRestApiKeyRequired =
-        globalRestApiKeyRequired ?? fn.restApi?.apiKeyRequired ?? false;
-      for (const route of fn.events?.rest ?? []) {
-        if (!restApi) {
-          continue;
-        }
-        const normalizedMethod = route.method.toUpperCase();
-        const resource = restApi.root.resourceForPath(route.path);
-        resource.addMethod(
-          normalizedMethod,
-          new apigw.LambdaIntegration(fnResource, { proxy: true }),
-          { apiKeyRequired: functionRestApiKeyRequired },
-        );
-        if (functionRestApiKeyRequired) {
-          hasAnyRestApiKeyRequired = true;
-        }
-      }
-    }
-
-    if (restApi && hasAnyRestApiKeyRequired) {
-      const apiKey = restApi.addApiKey("RestApiKey");
-      const usagePlan = restApi.addUsagePlan("RestApiUsagePlan", {
-        name: withStageName(`${config.service}-rest-plan`, config.provider.stage),
-      });
-      usagePlan.addApiKey(apiKey);
-      usagePlan.addApiStage({
-        stage: restApi.deploymentStage,
-      });
-    }
-
-    if (httpApi) {
-      new cdk.CfnOutput(this, "HttpApiUrl", { value: httpApi.url ?? "n/a" });
-    }
-    if (restApi) {
-      new cdk.CfnOutput(this, "RestApiUrl", { value: restApi.url });
-    }
+    // Phase 3: Bind events to resources (each domain filters its own types)
+    bindS3Events(ctx, events);
+    bindDynamoDBStreamEvents(ctx, events);
+    bindSQSEvents(ctx, events);
+    bindSNSEvents(ctx, events);
+    bindEventBridgeEvents(ctx, events);
+    synthesizeApis(ctx, events);
   }
 }
 
@@ -288,53 +54,9 @@ export function buildApp(
   config: NormalizedServiceConfig,
   options?: { outdir?: string },
 ): { app: cdk.App; stack: ServiceStack } {
+  validateDeploymentMode(config);
   const app = new cdk.App({ outdir: options?.outdir });
-  const deployment = config.provider.deployment;
-  const hasAssetLocationOverrides = Boolean(
-    deployment?.fileAssetsBucketName || deployment?.imageAssetsRepositoryName,
-  );
-  const hasRoleOverrides = Boolean(
-    deployment?.cloudFormationExecutionRoleArn || deployment?.deployRoleArn,
-  );
-  const hasCloudFormationServiceRole = Boolean(
-    deployment?.cloudFormationServiceRoleArn,
-  );
-  const inferredUseCliCredentials = hasAssetLocationOverrides && !hasRoleOverrides;
-  const useCliCredentials =
-    deployment?.useCliCredentials ?? inferredUseCliCredentials;
-  if (useCliCredentials && hasRoleOverrides) {
-    throw new Error(
-      `provider.deployment.useCliCredentials=true cannot be combined with deploy/cloudformation role overrides. Choose one mode.`,
-    );
-  }
-  if (hasCloudFormationServiceRole && hasRoleOverrides) {
-    throw new Error(
-      `provider.deployment.cloudFormationServiceRoleArn cannot be combined with deployRoleArn/cloudFormationExecutionRoleArn in this mode.`,
-    );
-  }
-  const hasExplicitDeploymentInfrastructure = Boolean(
-    deployment?.fileAssetsBucketName ||
-      deployment?.imageAssetsRepositoryName ||
-      deployment?.cloudFormationExecutionRoleArn ||
-      deployment?.deployRoleArn ||
-      useCliCredentials,
-  );
-  const requireBootstrap =
-    deployment?.requireBootstrap ?? !hasExplicitDeploymentInfrastructure;
-  const synthesizer = useCliCredentials
-    ? new cdk.CliCredentialsStackSynthesizer({
-        fileAssetsBucketName: deployment?.fileAssetsBucketName,
-        imageAssetsRepositoryName: deployment?.imageAssetsRepositoryName,
-        qualifier: deployment?.qualifier,
-      })
-    : new cdk.DefaultStackSynthesizer({
-        fileAssetsBucketName: deployment?.fileAssetsBucketName,
-        imageAssetsRepositoryName: deployment?.imageAssetsRepositoryName,
-        cloudFormationExecutionRole: deployment?.cloudFormationExecutionRoleArn,
-        deployRoleArn: deployment?.deployRoleArn,
-        qualifier: deployment?.qualifier,
-        generateBootstrapVersionRule: requireBootstrap,
-      });
+  const synthesizer = createStackSynthesizer(config);
   const stack = new ServiceStack(
     app,
     config.stackName,

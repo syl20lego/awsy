@@ -42,6 +42,46 @@ export const functionSchema = z.object({
           }),
         )
         .optional(),
+      s3: z
+        .array(
+          z.object({
+            bucket: z.string().min(1),
+            events: z.array(z.string().min(1)).min(1),
+          }),
+        )
+        .optional(),
+      sqs: z
+        .array(
+          z.object({
+            queue: z.string().min(1),
+            batchSize: z.number().int().min(1).max(10000).optional(),
+          }),
+        )
+        .optional(),
+      sns: z
+        .array(
+          z.object({
+            topic: z.string().min(1),
+          }),
+        )
+        .optional(),
+      dynamodb: z
+        .array(
+          z.object({
+            table: z.string().min(1),
+            batchSize: z.number().int().min(1).max(10000).optional(),
+            startingPosition: z.enum(["LATEST", "TRIM_HORIZON"]).optional(),
+          }),
+        )
+        .optional(),
+      eventbridge: z
+        .array(
+          z.union([
+            z.object({ schedule: z.string().min(1) }),
+            z.object({ eventPattern: z.record(z.string(), z.unknown()) }),
+          ]),
+        )
+        .optional(),
     })
     .optional(),
   restApi: z
@@ -63,6 +103,9 @@ export const tableSchema = z.object({
     })
     .optional(),
   billingMode: z.enum(["PAY_PER_REQUEST", "PROVISIONED"]).optional(),
+  stream: z
+    .enum(["NEW_IMAGE", "OLD_IMAGE", "NEW_AND_OLD_IMAGES", "KEYS_ONLY"])
+    .optional(),
 });
 
 export const serviceConfigSchema = z.object({

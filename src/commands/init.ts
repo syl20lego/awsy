@@ -24,6 +24,9 @@ functions:
       rest:
         - method: GET
           path: /hello-rest
+      sqs:
+        - queue: ref:jobs
+          batchSize: 10
 
 storage:
   s3:
@@ -36,6 +39,7 @@ storage:
         name: pk
         type: string
       billingMode: PAY_PER_REQUEST
+      stream: NEW_AND_OLD_IMAGES
 
 messaging:
   sqs:
